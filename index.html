@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>English Edge — Admin</title>
+<link rel="icon" href="logo.jpg">
+<script>(function(){try{document.documentElement.dataset.theme=localStorage.getItem('ee-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}})()</script>
+<style>
+:root{--bg:#f4f7fb;--fg:#0a2f6b;--mut:#4a5f86;--pri:#0074c8;--red:#ed1c24;--org:#ff9f1a;--card:#fff;--bd:rgba(10,47,107,.14)}
+[data-theme=dark]{--bg:#060b18;--fg:#e8eefb;--mut:#a3b3d2;--pri:#4aa3ff;--card:#101a34;--bd:rgba(255,255,255,.13)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+:focus-visible{outline:3px solid var(--org);outline-offset:2px}
+header{display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.7rem 1rem;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:center;gap:.6rem;font-weight:800;letter-spacing:.05em}.brand img{width:38px;height:38px;border-radius:50%}
+nav{display:flex;gap:.3rem;overflow-x:auto;padding:.6rem 1rem;background:var(--card);border-bottom:1px solid var(--bd)}
+nav button{white-space:nowrap}
+main{max-width:1000px;margin:auto;padding:1.2rem 1rem 3rem}
+h1{font-size:1.5rem;margin:.2rem 0 1rem}
+button,.btn{min-height:40px;padding:0 1rem;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--fg);font:inherit;font-weight:600;cursor:pointer}
+button.p,nav button.on{background:var(--pri);border-color:var(--pri);color:#fff}button.d{color:var(--red);border-color:var(--red)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:1rem;margin-bottom:.8rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem}.stats b{display:block;font-size:1.8rem}.stats span{color:var(--mut)}
+input,select{width:100%;min-height:42px;padding:0 .8rem;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font:inherit;margin:.2rem 0 .7rem}
+.item{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;padding:.6rem 0;border-bottom:1px solid var(--bd)}.item:last-child{border:0}
+.acts{display:flex;gap:.3rem;flex-wrap:wrap}
+.msg{padding:.7rem 1rem;border-radius:10px;margin-bottom:.8rem}.err{background:rgba(237,28,36,.12);color:var(--red)}.ok{background:rgba(0,160,90,.14);color:#0a8f55}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:640px}th,td{text-align:left;padding:.5rem;border-bottom:1px solid var(--bd)}
+.st{font-size:.75rem;font-weight:700;padding:.15rem .5rem;border-radius:99px;background:rgba(0,160,90,.15);color:#0a8f55}.st.banned,.st.blocked{background:rgba(237,28,36,.14);color:var(--red)}
+.login{max-width:380px;margin:12vh auto;padding:0 1rem;text-align:center}.login img{width:96px;border-radius:50%}.login form{text-align:left}
+.row{display:flex;gap:.5rem}.row>*{flex:1}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+const sb=supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY);
+const R=document.getElementById('root');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let tab='dashboard',flash=null,sel={cls:'',sub:''};
+const say=(t,c='ok')=>{flash={t,c}};
+const fail=(e,what)=>{console.error(e);say(`${what} failed. You may not have permission, or the network is down.`,'err')};
+const msgHtml=()=>{const m=flash;flash=null;return m?`<div class="msg ${m.c}" role="alert">${esc(m.t)}</div>`:''};
+
+async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session)return login();
+  const {data}=await sb.from('admins').select('user_id').eq('user_id',session.user.id).maybeSingle();
+  if(!data){await sb.auth.signOut();return login('This account is not authorized for the admin dashboard.')}
+  shell();
+}
+function login(err){
+  R.innerHTML=`<div class="login"><img src="logo.jpg" alt="English Edge logo"><h1>Admin sign in</h1>${err?`<div class="msg err">${esc(err)}</div>`:''}<div id="m"></div>
+  <form id="lf"><label for="e">Email</label><input id="e" type="email" required autocomplete="email"><label for="p">Password</label><input id="p" type="password" required autocomplete="current-password"><button class="p" style="width:100%">Sign in</button></form></div>`;
+  document.getElementById('lf').onsubmit=async e=>{
+    e.preventDefault();const {error}=await sb.auth.signInWithPassword({email:e.target.e.value.trim(),password:e.target.p.value});
+    if(error)document.getElementById('m').innerHTML='<div class="msg err">Incorrect email or password.</div>';else boot();
+  };
+}
+function shell(){
+  const tabs=['dashboard','users','classes','subjects','worksheets','settings'];
+  R.innerHTML=`<header><div class="brand"><img src="logo.jpg" alt=""><span>ENGLISH EDGE · Admin</span></div><button id="so">Sign out</button></header>
+  <nav aria-label="Sections">${tabs.map(t=>`<button data-t="${t}" class="${t===tab?'on':''}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</nav><main id="v"></main>`;
+  document.getElementById('so').onclick=async()=>{await sb.auth.signOut();login()};
+  document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;shell()});
+  view();
+}
+async function view(){
+  const v=document.getElementById('v');
+  try{v.innerHTML=await views[tab]();wire[tab]&&wire[tab]()}
+  catch(e){console.error(e);v.innerHTML='<div class="msg err">Something went wrong loading this section.</div>'}
+}
+const count=async(t,f)=>{let q=sb.from(t).select('*',{count:'exact',head:true});if(f)q=f(q);const {count:c,error}=await q;if(error)throw error;return c};
+const opts=(l,v)=>l.map(x=>`<option value="${x.id}" ${x.id===v?'selected':''}>${esc(x.name)}</option>`).join('');
+const reload=()=>{shell()};
+
+const views={
+  async dashboard(){
+    const [u,a,b,c,s,w]=await Promise.all([count('profiles'),count('profiles',q=>q.eq('status','active')),count('profiles',q=>q.neq('status','active')),count('classes'),count('subjects'),count('worksheets')]);
+    const S=(n,l)=>`<div class="card"><b>${n}</b><span>${l}</span></div>`;
+    return `<h1>Dashboard</h1>${msgHtml()}<div class="stats">${S(u,'Total users')}${S(a,'Active users')}${S(b,'Banned / blocked')}${S(c,'Classes')}${S(s,'Subjects')}${S(w,'Worksheets')}</div>`;
+  },
+  async users(){
+    const {data,error}=await sb.from('profiles').select('*').order('created_at',{ascending:false});if(error)throw error;
+    return `<h1>Users (${data.length})</h1>${msgHtml()}<div class="card tw"><table><thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Joined</th><th>Last login</th><th>Points</th><th></th></tr></thead><tbody>${data.map(u=>`<tr><td>${esc(u.full_name||'—')}</td><td>${esc(u.email)}</td><td><span class="st ${esc(u.status)}">${esc(u.status.toUpperCase())}</span></td><td>${new Date(u.created_at).toLocaleDateString()}</td><td>${u.last_login?new Date(u.last_login).toLocaleDateString():'—'}</td><td>${u.points}</td>
+    <td><div class="acts">${u.status==='active'?`<button data-s="banned" data-id="${u.id}">Ban</button><button data-s="blocked" data-id="${u.id}">Block</button>`:`<button data-s="active" data-id="${u.id}">${u.status==='banned'?'Unban':'Unblock'}</button>`}<button class="d" data-del="${u.id}" data-e="${esc(u.email)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>`;
+  },
+  async classes(){
+    const {data,error}=await sb.from('classes').select('*').order('position').order('name');if(error)throw error;
+    return `<h1>Classes / Groups</h1>${msgHtml()}<div class="card"><form id="add" class="row"><input id="nm" placeholder="New class or group name" required aria-label="Class name"><button class="p">Add</button></form></div>
+    <div class="card">${data.length?data.map((c,i)=>`<div class="item"><span>${esc(c.name)}</span><div class="acts"><button data-up="${i}">↑</button><button data-dn="${i}">↓</button><button data-ren="${c.id}" data-n="${esc(c.name)}">Rename</button><button class="d" data-del="${c.id}" data-n="${esc(c.name)}">Delete</button></div></div>`).join(''):'No classes yet.'}</div>`;
+  },
+  async subjects(){
+    const {data:cl}=await sb.from('classes').select('id,name').order('position').order('name');
+    if(!cl.length)return '<h1>Subjects</h1><div class="card">Create a class first.</div>';
+    sel.cls=sel.cls&&cl.find(c=>c.id===sel.cls)?sel.cls:cl[0].id;
+    const {data,error}=await sb.from('subjects').select('*').eq('class_id',sel.cls).order('position').order('name');if(error)throw error;
+    return `<h1>Subjects</h1>${msgHtml()}<div class="card"><label for="cs">Class</label><select id="cs">${opts(cl,sel.cls)}</select><form id="add" class="row"><input id="nm" placeholder="New subject name" required aria-label="Subject name"><button class="p">Add</button></form></div>
+    <div class="card">${data.length?data.map((s,i)=>`<div class="item"><span>${esc(s.name)}</span><div class="acts"><button data-up="${i}">↑</button><button data-dn="${i}">↓</button><button data-ren="${s.id}" data-n="${esc(s.name)}">Rename</button><button class="d" data-del="${s.id}" data-n="${esc(s.name)}">Delete</button></div></div>`).join(''):'No subjects in this class.'}</div>`;
+  },
+  async worksheets(){
+    const {data:cl}=await sb.from('classes').select('id,name').order('position').order('name');
+    if(!cl.length)return '<h1>Worksheets</h1><div class="card">Create a class and subject first.</div>';
+    sel.cls=sel.cls&&cl.find(c=>c.id===sel.cls)?sel.cls:cl[0].id;
+    const {data:sj}=await sb.from('subjects').select('id,name').eq('class_id',sel.cls).order('position').order('name');
+    if(!sj.length)return `<h1>Worksheets</h1><div class="card"><label for="cs">Class</label><select id="cs">${opts(cl,sel.cls)}</select>Add a subject to this class first.</div>`;
+    sel.sub=sel.sub&&sj.find(s=>s.id===sel.sub)?sel.sub:sj[0].id;
+    const {data,error}=await sb.from('worksheets').select('*').eq('subject_id',sel.sub).order('created_at');if(error)throw error;
+    return `<h1>Worksheets</h1>${msgHtml()}<div class="card"><div class="row"><div><label for="cs">Class</label><select id="cs">${opts(cl,sel.cls)}</select></div><div><label for="ss">Subject</label><select id="ss">${opts(sj,sel.sub)}</select></div></div>
+    <form id="up"><label for="t">Worksheet title</label><input id="t" required><label for="f">PDF file (max 20 MB)</label><input id="f" type="file" accept="application/pdf" required><label><input type="checkbox" id="dl" checked style="width:auto;min-height:0"> Allow download</label><br><br><button class="p" id="ub">Upload worksheet</button></form></div>
+    <div class="card">${data.length?data.map(w=>`<div class="item"><span>${esc(w.title)}${w.downloadable?'':' <small>(view only)</small>'}</span><div class="acts"><a class="btn" style="display:inline-flex;align-items:center" target="_blank" rel="noopener" href="${esc(pub(w.file_path))}">View</a><button data-rep="${w.id}" data-p="${esc(w.file_path)}">Replace file</button><button data-ren="${w.id}" data-n="${esc(w.title)}">Rename</button><button class="d" data-del="${w.id}" data-p="${esc(w.file_path)}" data-n="${esc(w.title)}">Delete</button></div></div>`).join(''):'No worksheets in this subject.'}</div><input type="file" id="rf" accept="application/pdf" hidden>`;
+  },
+  async settings(){
+    const {data}=await sb.from('contact_info').select('*').eq('id',1).maybeSingle();const c=data||{};
+    const F=(k,l)=>`<label for="${k}">${l}</label><input id="${k}" value="${esc(c[k]||'')}">`;
+    return `<h1>Settings — Contact information</h1>${msgHtml()}<div class="card"><p>Shown on the public site. Leave blank to show a placeholder.</p><form id="cf">${F('phone','Phone')}${F('whatsapp','WhatsApp number')}${F('instagram','Instagram link (https://…)')}${F('email','Email')}${F('website','Website (https://…)')}<button class="p">Save</button></form></div>`;
+  }
+};
+const pub=p=>sb.storage.from('worksheets').getPublicUrl(p).data.publicUrl;
+
+async function swap(table,list,i,j,filter){
+  const a=list[i],b=list[j];if(!a||!b)return;
+  const pa=list.map((_,k)=>k);// normalise positions
+  const ids=list.map(x=>x.id);[ids[i],ids[j]]=[ids[j],ids[i]];
+  const res=await Promise.all(ids.map((id,k)=>sb.from(table).update({position:k}).eq('id',id)));
+  if(res.some(r=>r.error))throw res.find(r=>r.error).error;
+}
+
+const wire={
+  users(){
+    document.querySelectorAll('[data-s]').forEach(b=>b.onclick=async()=>{
+      if(!confirm(`Set this account to ${b.dataset.s.toUpperCase()}?`))return;
+      const {error}=await sb.rpc('admin_set_status',{uid:b.dataset.id,new_status:b.dataset.s});
+      error?fail(error,'Status change'):say('Status updated.');reload();
+    });
+    document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+      if(!confirm(`Permanently delete ${b.dataset.e}? This cannot be undone.`))return;
+      const {error}=await sb.rpc('admin_delete_user',{uid:b.dataset.del});
+      error?fail(error,'Delete'):say('User deleted.');reload();
+    });
+  },
+  classes(){crud('classes',()=>({}),'class')},
+  subjects(){
+    document.getElementById('cs').onchange=e=>{sel.cls=e.target.value;reload()};
+    crud('subjects',()=>({class_id:sel.cls}),'subject',q=>q.eq('class_id',sel.cls));
+  },
+  worksheets(){
+    document.getElementById('cs').onchange=e=>{sel.cls=e.target.value;sel.sub='';reload()};
+    const ss=document.getElementById('ss');if(!ss)return;ss.onchange=e=>{sel.sub=e.target.value;reload()};
+    document.getElementById('up').onsubmit=async e=>{
+      e.preventDefault();const f=e.target.f.files[0];
+      if(!f||f.type!=='application/pdf'||f.size>20*1024*1024){say('Please choose a PDF under 20 MB.','err');return reload()}
+      document.getElementById('ub').disabled=true;
+      const path=`${sel.cls}/${sel.sub}/${crypto.randomUUID()}.pdf`;
+      const up=await sb.storage.from('worksheets').upload(path,f,{contentType:'application/pdf'});
+      if(up.error){fail(up.error,'Upload');return reload()}
+      const {error}=await sb.from('worksheets').insert({subject_id:sel.sub,title:e.target.t.value.trim(),file_path:path,downloadable:e.target.dl.checked});
+      if(error){await sb.storage.from('worksheets').remove([path]);fail(error,'Saving worksheet')}else say('Worksheet uploaded.');reload();
+    };
+    let repId=null,repOld=null;const rf=document.getElementById('rf');
+    document.querySelectorAll('[data-rep]').forEach(b=>b.onclick=()=>{repId=b.dataset.rep;repOld=b.dataset.p;rf.value='';rf.click()});
+    rf.onchange=async()=>{const f=rf.files[0];if(!f||f.type!=='application/pdf'||f.size>20*1024*1024){say('Please choose a PDF under 20 MB.','err');return reload()}
+      const path=`${sel.cls}/${sel.sub}/${crypto.randomUUID()}.pdf`;
+      const up=await sb.storage.from('worksheets').upload(path,f,{contentType:'application/pdf'});if(up.error){fail(up.error,'Upload');return reload()}
+      const {error}=await sb.from('worksheets').update({file_path:path}).eq('id',repId);
+      if(error){await sb.storage.from('worksheets').remove([path]);fail(error,'Replace')}else{await sb.storage.from('worksheets').remove([repOld]);say('File replaced.')}reload()};
+    document.querySelectorAll('[data-ren]').forEach(b=>b.onclick=async()=>{const n=prompt('New title',b.dataset.n);if(!n||!n.trim())return;const {error}=await sb.from('worksheets').update({title:n.trim()}).eq('id',b.dataset.ren);error?fail(error,'Rename'):say('Renamed.');reload()});
+    document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+      if(!confirm(`Delete worksheet "${b.dataset.n}"?`))return;
+      const {error}=await sb.from('worksheets').delete().eq('id',b.dataset.del);
+      if(error)fail(error,'Delete');else{await sb.storage.from('worksheets').remove([b.dataset.p]);say('Worksheet deleted.')}reload();
+    });
+  },
+  settings(){
+    document.getElementById('cf').onsubmit=async e=>{
+      e.preventDefault();const g=k=>e.target[k].value.trim()||null;
+      const bad=['instagram','website'].some(k=>g(k)&&!/^https?:\/\//i.test(g(k)));
+      if(bad){say('Instagram and website must start with http:// or https://','err');return reload()}
+      const {error}=await sb.from('contact_info').upsert({id:1,phone:g('phone'),whatsapp:g('whatsapp'),instagram:g('instagram'),email:g('email'),website:g('website')});
+      error?fail(error,'Save'):say('Contact information saved.');reload();
+    };
+  }
+};
+// shared add / rename / delete / reorder for classes & subjects
+function crud(table,extra,label,filter){
+  document.getElementById('add').onsubmit=async e=>{
+    e.preventDefault();const n=document.getElementById('nm').value.trim();if(!n)return;
+    let q=sb.from(table).select('id',{count:'exact',head:true});if(filter)q=filter(q);const {count}=await q;
+    const {error}=await sb.from(table).insert({name:n,position:count||0,...extra()});
+    error?fail(error,'Add'):say(`${label} added.`);reload();
+  };
+  document.querySelectorAll('[data-ren]').forEach(b=>b.onclick=async()=>{const n=prompt('New name',b.dataset.n);if(!n||!n.trim())return;const {error}=await sb.from(table).update({name:n.trim()}).eq('id',b.dataset.ren);error?fail(error,'Rename'):say('Renamed.');reload()});
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    if(!confirm(`Delete ${label} "${b.dataset.n}"${table==='classes'?' with all its subjects and worksheets':table==='subjects'?' with all its worksheets':''}? This cannot be undone.`))return;
+    const {data:ws}=table==='classes'?await sb.from('worksheets').select('file_path,subjects!inner(class_id)').eq('subjects.class_id',b.dataset.del):await sb.from('worksheets').select('file_path').eq('subject_id',b.dataset.del);
+    const {error}=await sb.from(table).delete().eq('id',b.dataset.del);
+    if(error)fail(error,'Delete');else{if(ws&&ws.length)await sb.storage.from('worksheets').remove(ws.map(w=>w.file_path));say(`${label} deleted.`)}reload();
+  });
+  const move=async(i,d)=>{let q=sb.from(table).select('id').order('position').order('name');if(filter)q=filter(q);const {data}=await q;try{await swap(table,data,i,i+d)}catch(e){fail(e,'Reorder')}reload()};
+  document.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>move(+b.dataset.up,-1));
+  document.querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>move(+b.dataset.dn,1));
+}
+boot();
+</script>
+</body>
+</html>
